@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.env
+.env.local
+
+# Backup files hold real spending records: keep them out of the repository.
+money-book-*.json
+money-book-*.csv

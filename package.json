@@ -1,0 +1,23 @@
+{
+  "name": "money-book",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:setup": "node scripts/db-setup.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "mysql2": "^3.24.5",
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}
