@@ -24,7 +24,12 @@ those two pages and does the adding up.
 - **Year.** Twelve months side by side: received, spent, and the money left at
   the end of each month, carried forward from your starting balance.
 - **Change your mind.** Press any line to correct it, move it to another date,
-  or delete it (two presses, because there is no undo).
+  or delete it; the message that follows offers Undo for a few seconds.
+- **History.** Every change is written down: what was added, changed or
+  deleted (with the entry as it was), settings changes, restores, erases, and
+  each log-in. A wrong-password attempt on your account shows up in red, so
+  you know to change your password (Settings), which logs out every other
+  device.
 - **Your own copy.** Save the whole book as a backup file, restore from one, or
   save it as a spreadsheet for Excel or Google Sheets.
 - **Private.** Each person signs up for their own book. Nobody sees anyone
@@ -82,9 +87,10 @@ this was developed on had no Docker available. Everything else below was run.
 npm test
 ```
 
-23 tests run with no database: money parsing and formatting, dates, the
+31 tests run with no database: money parsing and formatting, dates, the
 carried-forward balance, quick-choice ranking, the year table, backup files,
-the spreadsheet export, form validation and the log-in limiter. 13 more run against a real MySQL
+the spreadsheet export, form validation, the history's wording and the log-in
+limiter. 18 more run against a real MySQL
 when you point them at an **empty test database** (they drop and recreate the
 tables):
 
@@ -103,21 +109,24 @@ their book.
 app/
   page.js            Days: one month (Server Component, reads the database)
   year/page.js       Year: twelve months and the running balance
-  settings/page.js   Starting balance, backup, erase
+  history/page.js    History: every change and log-in, newest first
+  settings/page.js   Starting balance, backup, password, erase
   login, signup      Account pages
   actions.js         Server Actions: every change to the book goes through here
   api/backup         GET: the whole book as a JSON file
   api/export         GET: the whole book as a CSV file
+  api/health         GET: 200 when the database answers, for a host's health check
 components/          The interactive parts (Client Components): forms, the day list, toasts
 lib/
   money.js           Amounts as whole minor units; parsing and formatting
   dates.js           Dates as "2026-09-30" text; month stepping; "today" in a time zone
   book.js            The arithmetic: money left, quick choices, the year table
+  history.js         The history in words
   backup.js          Reading and writing backup files; the CSV export
   validate.js        Checks on everything that arrives from a form
   repos/             All the SQL, one function per question asked of the database
   auth/              Password hashing, sessions, the current user
-  schema.sql         Four tables: users, sessions, settings, entries
+  schema.sql         Six tables: users, sessions, settings, entries, history, attempts
 test/                Unit tests and database tests
 ```
 
@@ -159,11 +168,22 @@ does not even confirm that the entry is there.
   used to log in as anyone. Logging out deletes the row.
 - Logging in with an unknown email takes as long as a wrong password and gives
   the same message, so the form does not reveal who has an account.
-- Ten log-in attempts per email per fifteen minutes.
+- Every fifteen minutes: ten log-in attempts per email, thirty per network
+  address, ten sign-ups per address, ten tries at the current password when
+  changing it. The counts are kept in the database, so they hold across
+  restarts and across several servers. The network address is read from the
+  proxy in front of the app (`TRUSTED_PROXIES`), never from what the browser
+  says.
 - Server Actions refuse calls that come from another website (Next.js compares
   the `Origin` header with the host). I replayed a real "add entry" request
   with a different origin and with no cookie; both were refused and nothing was
   saved.
+
+**The history is written with the change.** Each change and its line in
+the history are one transaction, so the history never shows something that
+did not happen. It keeps a copy of the entry as it was, so a deleted entry can
+still be read there. "Erase everything" keeps the history (with a line saying
+what went); it can be cleared on its own from the History page.
 
 **A backup file is treated as something a stranger wrote.** Restoring reads
 only the fields the app itself writes, checks every date and amount, skips
@@ -184,8 +204,8 @@ it to the browser's own date.
   (yen) work; currencies with three do not.
 - One book per account, and no sharing a book between people.
 - No password reset: that needs to send email, which this project does not do.
-- The log-in limiter is kept in memory, so it is per server process. With
-  several servers it would belong in the database or Redis.
+- The limits per network address need the app behind a proxy (nginx, a load
+  balancer, Vercel). Served directly, a browser can claim any address.
 - Categories are just the labels you type. "food" and "Food" are counted
   together; "lunch" is its own line.
 - On a host that is not `localhost`, the app must be served over HTTPS: in

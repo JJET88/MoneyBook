@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { readBackup, toBackup, toCsv } from "../lib/backup.js";
 import { canShowLeft, groupByDay, leftAfter, leftAt, rankLabels, whereItWent, yearTable } from "../lib/book.js";
-import { isDate, isMonth, monthName, serverToday, shiftMonth, shortDate, weekday } from "../lib/dates.js";
+import { fullDate, isDate, isMonth, momentIn, monthName, serverToday, shiftMonth, shortDate, weekday } from "../lib/dates.js";
 import { AppError } from "../lib/errors.js";
+import { describeHistory, groupHistory } from "../lib/history.js";
+import { translator } from "../lib/i18n/index.js";
+import { addressFrom, createLimiter } from "../lib/limiter.js";
 import { formatMoney, minorToInput, parseAmountMinor } from "../lib/money.js";
-import { validateEntry, validateSettings, validateSignup } from "../lib/validate.js";
+import { validateEntry, validatePasswordChange, validateSettings, validateSignup } from "../lib/validate.js";
 
 const rejects = (fn, pattern) => assert.throws(fn, (e) => e instanceof AppError && e.status === 400 && pattern.test(e.message));
 
@@ -146,6 +149,7 @@ describe("the book's arithmetic", () => {
   test("a month's page lists the newest day first", () => {
     const page = groupByDay(entries.filter((e) => e.date.startsWith("2026-09")));
     assert.deepEqual(page.map((d) => [d.day, d.weekday, d.items.map((e) => e.id)]), [[2, "Wed", [7]], [1, "Tue", [5, 6]]]);
+    assert.equal(page[1].spent, page[1].items.filter((e) => e.kind === "out").reduce((sum, e) => sum + e.amountMinor, 0));
   });
 
   test("where it went: by label, largest first, the tail folded together", () => {
@@ -241,6 +245,12 @@ describe("forms", () => {
     rejects(() => validateEntry(null), /what it was for/);
   });
 
+  test("a new password needs the current one", () => {
+    rejects(() => validatePasswordChange({ current: "", password: "long enough" }), /current password/);
+    rejects(() => validatePasswordChange({ current: "old", password: "short" }), /at least 8/);
+    assert.deepEqual(validatePasswordChange({ current: "old", password: "long enough" }), { current: "old", password: "long enough" });
+  });
+
   test("the starting balance needs its amount and its date together", () => {
     assert.deepEqual(validateSettings({ currency: " ฿ ", amount: "", date: "" }), { currency: "฿", start: null });
     assert.deepEqual(validateSettings({ currency: "", amount: "0", date: "2026-03-31" }), { currency: "", start: { date: "2026-03-31", amountMinor: 0 } });
@@ -270,17 +280,78 @@ describe("demo data", () => {
   });
 });
 
+describe("history", () => {
+  const t = translator("en");
+  const food = { date: "2026-09-30", kind: "out", label: "food", amountMinor: 6550 };
+
+  test("says what was added, changed and deleted, with the entry as it was", () => {
+    assert.deepEqual(describeHistory({ action: "entry.add", detail: { after: food } }, t, "฿"), { title: "Added", lines: ["food, spent ฿65.50, 30 Sept 2026"], warn: false });
+    const changed = describeHistory({ action: "entry.change", detail: { before: food, after: { ...food, kind: "in", label: "refund", amountMinor: 7000 } } }, t);
+    assert.deepEqual(changed.lines, ["Was: food, spent 65.50, 30 Sept 2026", "Now: refund, received 70, 30 Sept 2026"]);
+    assert.equal(describeHistory({ action: "entry.delete", detail: { before: food } }, t).title, "Deleted");
+  });
+
+  test("settings, restores and erases read as sentences", () => {
+    const settings = describeHistory({ action: "settings.save", detail: { before: { currency: "", start: null }, after: { currency: "฿", start: { date: "2026-03-31", amountMinor: 500000 } } } }, t);
+    assert.deepEqual(settings.lines, ["Was: no starting balance · no money sign", "Now: starting balance ฿5,000 on 31 Mar 2026 · money sign ฿"]);
+    assert.deepEqual(describeHistory({ action: "book.restore", detail: { entries: 1, replaced: 12 } }, t).lines, ["1 entry from the backup replaced 12 entries."]);
+    const erased = describeHistory({ action: "book.erase", detail: { entries: 3 } }, t);
+    assert.deepEqual([erased.lines, erased.warn], [["3 entries and the starting balance were removed."], true]);
+  });
+
+  test("failed log-ins stand out, and an unknown action still shows", () => {
+    assert.deepEqual(describeHistory({ action: "login.failed", detail: null }, t), { title: "Someone tried to log in with a wrong password", lines: [], warn: true });
+    assert.equal(describeHistory({ action: "future.thing", detail: null }, t).title, "future.thing");
+    assert.equal(describeHistory({ action: "login" }, translator("th")).title, "เข้าสู่ระบบ");
+  });
+
+  test("lines are grouped by the day they happened where the people are", () => {
+    // 2026-10-17 18:30 UTC is already 18 October in Bangkok.
+    const items = [{ id: 3, at: Date.UTC(2026, 9, 17, 18, 30), action: "login" }, { id: 2, at: Date.UTC(2026, 9, 17, 9, 5), action: "login" }];
+    const days = groupHistory(items, t, "", "Asia/Bangkok");
+    assert.deepEqual(days.map((d) => [d.date, d.items.map((i) => i.time)]), [["2026-10-18", ["01:30"]], ["2026-10-17", ["16:05"]]]);
+    assert.equal(momentIn(0, "Not/AZone").date.length, 10); // a bad zone falls back instead of failing
+    assert.equal(fullDate("2026-03-31"), "31 Mar 2026");
+  });
+});
+
 describe("the attempt limiter", () => {
+  const tooMany = (e) => e instanceof AppError && e.status === 429;
+
   test("allows a few tries per key, then refuses until the window has passed", async () => {
-    const { createLimiter } = await import("../lib/limiter.js");
     let clock = 0;
-    const check = createLimiter(3, 1000, () => clock);
-    check("ann"); check("ann"); check("ann");
-    assert.throws(() => check("ann"), (e) => e instanceof AppError && e.status === 429);
-    check("ben"); // someone else is not held up
-    clock = 999;
-    assert.throws(() => check("ann"), (e) => e.status === 429);
+    const attempt = createLimiter(3, 1000, { now: () => clock });
+    await attempt("ann"); await attempt("ann"); await attempt("ann");
+    await assert.rejects(attempt("ann"), tooMany);
+    await attempt("ben"); // someone else is not held up
+    clock = 500;
+    await assert.rejects(attempt("ann"), tooMany);
     clock = 1000;
-    check("ann"); // the first tries are now old enough to forget
+    await attempt("ann"); // the first tries are now old enough to forget
+    await attempt("ann");
+    await assert.rejects(attempt("ann"), tooMany); // the refused try at 500 still counts
+  });
+
+  test("a burst sent at the same moment cannot slip through together", async () => {
+    const attempt = createLimiter(3, 1000, { now: () => 0 });
+    const results = await Promise.allSettled(Array.from({ length: 10 }, () => attempt("ann")));
+    assert.ok(results.filter((r) => r.status === "fulfilled").length <= 3);
+  });
+
+  test("limiters with different names keep separate counts", async () => {
+    const store = (await import("../lib/limiter.js")).memoryStore();
+    const login = createLimiter(1, 1000, { name: "login", store, now: () => 0 });
+    const signup = createLimiter(1, 1000, { name: "signup", store, now: () => 0 });
+    await login("x");
+    await signup("x");
+    await assert.rejects(login("x"), tooMany);
+  });
+
+  test("the address is the one the outermost trusted proxy saw", () => {
+    assert.equal(addressFrom("203.0.113.9"), "203.0.113.9");
+    assert.equal(addressFrom("1.2.3.4, 203.0.113.9"), "203.0.113.9"); // the first entry was made up by the browser
+    assert.equal(addressFrom("1.2.3.4, 203.0.113.9, 10.0.0.2", 2), "203.0.113.9");
+    assert.equal(addressFrom("203.0.113.9", 3), "203.0.113.9");
+    assert.equal(addressFrom(null), "unknown");
   });
 });

@@ -15,6 +15,9 @@
   --in: #17794a;
   --warn: #b3261e;
   --chip: #edf1f7;
+  --on-in: #ffffff;
+  --today: #eef3ff;
+  --shadow: 0 1px 2px rgb(27 37 64 / 0.06), 0 2px 8px rgb(27 37 64 / 0.05);
   --font: "Atkinson Hyperlegible", "Noto Sans Myanmar", "Noto Sans Thai", system-ui, -apple-system, "Segoe UI",
     "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
 }
@@ -22,6 +25,7 @@
   :root:not([data-theme="light"]) {
     --ground: #0f131b; --paper: #171c27; --ink: #e9edf6; --ink-2: #a2adc4; --rule: #2b3445;
     --margin: #7d4444; --accent: #8fb0ff; --on-accent: #0d1530; --in: #62d394; --warn: #ff8a80; --chip: #222a39;
+    --on-in: #0b2016; --today: #1d2536; --shadow: none;
     color-scheme: dark;
   }
 }
@@ -29,6 +33,7 @@
 :root[data-theme="dark"] {
   --ground: #0f131b; --paper: #171c27; --ink: #e9edf6; --ink-2: #a2adc4; --rule: #2b3445;
   --margin: #7d4444; --accent: #8fb0ff; --on-accent: #0d1530; --in: #62d394; --warn: #ff8a80; --chip: #222a39;
+  --on-in: #0b2016; --today: #1d2536; --shadow: none;
   color-scheme: dark;
 }
 
@@ -45,6 +50,9 @@ body {
 h1, h2, h3, p, dl { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
 button:disabled { opacity: 0.6; cursor: default; }
+button, .plain, .tabs a, a.step { transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.08s; -webkit-tap-highlight-color: transparent; }
+button:not(:disabled):active, .plain:active, .tabs a:active, a.step:active { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 a { color: var(--accent); }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
@@ -71,14 +79,15 @@ header.top h1 { font-size: 1.5rem; letter-spacing: -0.01em; }
 .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 12rem; }
 .quiet { border: 0; background: none; padding: 6px 2px; color: var(--accent); text-decoration: underline; cursor: pointer; }
 
-.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .tabs a {
   display: grid; place-items: center; min-height: 46px; border: 1px solid var(--rule); border-radius: 10px;
   background: var(--paper); color: var(--ink); font-weight: 700; text-decoration: none;
 }
+.tabs a:hover, a.step:hover, .plain:hover { border-color: var(--ink-2); }
 .tabs a[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
-.panel { background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 14px; }
+.panel { background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); }
 .panel h2 { font-size: 1.1rem; }
 .panel h3 { font-size: 1rem; margin-bottom: 10px; }
 
@@ -109,6 +118,10 @@ a.step { border: 1px solid var(--rule); background: var(--paper); }
   font-weight: 700; cursor: pointer;
 }
 .kind button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.kind button.is-in[aria-pressed="true"] { background: var(--in); color: var(--on-in); border-color: var(--in); }
+/* Adding money received: the whole form says so, so it is not written down as spending by mistake */
+.form.add.is-in { border-color: var(--in); }
+.form.add.is-in .primary { background: var(--in); color: var(--on-in); }
 .form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .fields { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 8px; }
 .fields .wide { grid-column: 1 / -1; }
@@ -118,7 +131,8 @@ label.field { display: grid; gap: 3px; font-size: 0.85rem; color: var(--ink-2); 
   background: var(--paper); color: var(--ink); font-size: 1.05rem;
 }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chips button { min-height: 38px; padding: 4px 12px; border: 0; border-radius: 999px; background: var(--chip); cursor: pointer; }
+.chips button { min-height: 38px; padding: 4px 12px; border: 1px solid transparent; border-radius: 999px; background: var(--chip); cursor: pointer; }
+.chips button:hover { border-color: var(--rule); }
 .primary {
   min-height: 48px; border: 0; border-radius: 10px; background: var(--accent); color: var(--on-accent);
   font-weight: 700; font-size: 1.05rem; cursor: pointer; padding: 8px 16px;
@@ -130,14 +144,19 @@ label.field { display: grid; gap: 3px; font-size: 0.85rem; color: var(--ink-2); 
 .plain.is-danger { color: var(--warn); border-color: var(--warn); }
 .error { color: var(--warn); font-weight: 700; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.push-end { margin-left: auto; }
 .auth { margin-top: 8px; }
 
 /* The ruled page */
-.page { background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
+.page { background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
 .page h3 { font-size: 1rem; padding: 12px 14px 8px; }
 .day { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr); border-top: 1px solid var(--rule); }
 .day-date { padding: 10px 8px 10px 14px; color: var(--ink-2); font-size: 0.95rem; }
 .day-date b { display: block; color: var(--ink); font-size: 1.15rem; }
+.day-date span { display: block; }
+.day-date small { display: block; margin-top: 4px; font-size: 0.8rem; font-weight: 700; color: var(--ink-2); overflow-wrap: anywhere; }
+.day.is-today .day-date { background: var(--today); }
+.day.is-today .day-date b, .day.is-today .day-date span { color: var(--accent); font-weight: 700; }
 .day-items { border-left: 2px solid var(--margin); display: grid; grid-template-columns: minmax(0, 1fr); }
 .line + .line { border-top: 1px dashed var(--rule); }
 .item {
@@ -148,12 +167,25 @@ label.field { display: grid; gap: 3px; font-size: 0.85rem; color: var(--ink-2); 
 .item .what { min-width: 0; overflow-wrap: anywhere; }
 .item .amt { font-weight: 700; white-space: nowrap; }
 .item.is-in .amt { color: var(--in); }
+.item.is-in { box-shadow: inset 3px 0 0 var(--in); }
 .editor { padding: 10px 14px 12px 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; background: var(--chip); }
+.editor .kind button { min-height: 40px; }
 .total-line {
   display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; font-weight: 700; font-size: 1.1rem;
   border-top: 3px double var(--ink-2);
 }
 .empty { padding: 18px 14px 20px; border-top: 1px solid var(--rule); color: var(--ink-2); }
+
+/* History: the same ruled page, a time in the margin of each line */
+.page-hint { padding: 0 14px 12px; }
+ol.day-items { list-style: none; margin: 0; padding: 0; }
+.log { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 8px; padding: 10px 14px 10px 10px; }
+.log + .log { border-top: 1px dashed var(--rule); }
+.log-time { color: var(--ink-2); font-size: 0.9rem; padding-top: 1px; }
+.log-what { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.log-what span { color: var(--ink-2); font-size: 0.92rem; }
+.log.is-warn b { color: var(--warn); }
+.pager { padding: 12px 14px; border-top: 1px solid var(--rule); }
 
 /* Where it went */
 .bars { display: grid; gap: 8px; }
@@ -178,9 +210,20 @@ tr.is-total th, tr.is-total td { border-top: 3px double var(--ink-2); font-weigh
 
 .toast {
   position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px;
   background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 999px; font-weight: 700;
-  max-width: calc(100% - 32px); text-align: center; z-index: 10;
+  max-width: calc(100% - 32px); text-align: center; z-index: 10; box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+  animation: rise 0.18s ease-out;
 }
+.toast button {
+  flex: none; min-height: 36px; padding: 4px 12px; border: 1px solid currentColor; border-radius: 999px;
+  background: none; color: inherit; font-weight: 700; cursor: pointer;
+}
+@keyframes rise { from { opacity: 0; translate: 0 8px; } }
+
+/* While the next page loads */
+.skeleton { border-radius: 12px; background: var(--paper); border: 1px solid var(--rule); animation: pulse 1.2s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: 0.45; } }
 
 @media (max-width: 26rem) {
   .figure dd { font-size: 1.15rem; }
@@ -192,4 +235,5 @@ tr.is-total th, tr.is-total td { border-top: 3px double var(--ink-2); font-weigh
   tbody th a { margin-inline: -4px; padding-inline: 4px; }
   .spent-cell i { left: 4px; max-width: calc(100% - 8px); }
   .fields .full-sm { grid-column: 1 / -1; } /* a date box needs the whole row on a phone */
+  .tabs a { font-size: 0.88rem; padding-inline: 2px; } /* four tabs on a 320-pixel screen */
 }

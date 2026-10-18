@@ -6,6 +6,7 @@ import { addEntry } from "@/app/actions";
 import { localToday } from "@/lib/dates";
 import { formatMoney, minorToInput } from "@/lib/money";
 import { useT } from "./I18n";
+import KindToggle from "./KindToggle";
 import { useToast } from "./Toast";
 
 const STARTERS = { out: ["starter.food", "starter.transport", "starter.bill"], in: ["starter.allowance", "starter.salary"] };
@@ -19,6 +20,7 @@ export default function AddForm({ ym, defaultDate, choices, currency }) {
   const toast = useToast();
   const t = useT();
   const amountBox = useRef(null);
+  const labelBox = useRef(null);
   const [kind, setKind] = useState("out");
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
@@ -52,6 +54,7 @@ export default function AddForm({ ym, defaultDate, choices, currency }) {
       setError(null);
       setLabel("");
       setAmount("");
+      labelBox.current?.focus(); // ready for the next line
       toast(t("toast.added", { label: result.label, amount: formatMoney(result.amountMinor, currency) }));
       const month = result.date.slice(0, 7);
       if (month !== ym) router.push(`/?m=${month}`); // show the page it was written on
@@ -59,11 +62,8 @@ export default function AddForm({ ym, defaultDate, choices, currency }) {
   }
 
   return (
-    <form className="panel form" onSubmit={submit} noValidate>
-      <div className="kind" role="group" aria-label={t("entry.kinds")}>
-        <button type="button" aria-pressed={kind === "out"} onClick={() => setKind("out")}>{t("fig.spent")}</button>
-        <button type="button" aria-pressed={kind === "in"} onClick={() => setKind("in")}>{t("fig.received")}</button>
-      </div>
+    <form className={`panel form add${kind === "in" ? " is-in" : ""}`} onSubmit={submit} noValidate>
+      <KindToggle kind={kind} onChange={setKind} />
       <div className="chips" role="group" aria-label={t("entry.quick")}>
         {chips.map((chip) => (
           <button type="button" key={chip.label} onClick={() => choose(chip)}>{chip.label}</button>
@@ -71,11 +71,11 @@ export default function AddForm({ ym, defaultDate, choices, currency }) {
       </div>
       <div className="fields">
         <label className="field">{t("entry.whatFor")}
-          <input className="input" list="known-labels" maxLength={40} autoComplete="off" placeholder={t(kind === "in" ? "starter.allowance" : "starter.food")}
+          <input className="input" ref={labelBox} list="known-labels" enterKeyHint="next" maxLength={40} autoComplete="off" placeholder={t(kind === "in" ? "starter.allowance" : "starter.food")}
             value={label} onChange={(e) => setLabel(e.target.value)} />
         </label>
         <label className="field">{t("entry.amount")}
-          <input className="input num" ref={amountBox} inputMode="decimal" autoComplete="off" placeholder="65"
+          <input className="input num" ref={amountBox} inputMode="decimal" enterKeyHint="done" autoComplete="off" placeholder="65"
             value={amount} onChange={(e) => setAmount(e.target.value)} />
         </label>
         <label className="field wide">{t("entry.date")}

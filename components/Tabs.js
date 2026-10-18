@@ -7,6 +7,7 @@ import { useT } from "./I18n";
 const TABS = [
   { href: "/", label: "tabs.days" },
   { href: "/year", label: "tabs.year" },
+  { href: "/history", label: "tabs.history" },
   { href: "/settings", label: "tabs.settings" },
 ];
 

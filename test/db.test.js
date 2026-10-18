@@ -11,7 +11,7 @@ const env = process.env;
 const enabled = Boolean(env.MYSQL_TEST_DATABASE);
 
 describe("database", { skip: !enabled && "set MYSQL_TEST_DATABASE to run" }, () => {
-  let db, users, book, sessions, AppError, leftAfter;
+  let db, users, book, sessions, history, attempts, AppError, leftAfter;
   let ann, ben;
   const is404 = (e) => e instanceof AppError && e.status === 404;
   const line = (date, kind, label, amount) => ({ date, kind, label, amountMinor: amount * 100 });
@@ -30,8 +30,10 @@ describe("database", { skip: !enabled && "set MYSQL_TEST_DATABASE to run" }, () 
     users = await import("../lib/repos/users.js");
     book = await import("../lib/repos/book.js");
     sessions = await import("../lib/auth/sessions.js");
+    history = await import("../lib/repos/history.js");
+    attempts = await import("../lib/repos/attempts.js");
     await db.query("SET FOREIGN_KEY_CHECKS = 0");
-    for (const table of ["entries", "settings", "sessions", "users"]) await db.query(`DROP TABLE IF EXISTS ${table}`);
+    for (const table of ["history", "attempts", "entries", "settings", "sessions", "users"]) await db.query(`DROP TABLE IF EXISTS ${table}`);
     await db.query("SET FOREIGN_KEY_CHECKS = 1");
     const { applySchema } = await import("../scripts/db-setup.js");
     await applySchema();
@@ -151,6 +153,63 @@ describe("database", { skip: !enabled && "set MYSQL_TEST_DATABASE to run" }, () 
     assert.equal((await book.allEntries(ann.id)).length, 11);
   });
 
+  test("the history has one line per change, newest first, and only the owner's", async () => {
+    const actions = async (user) => (await history.listHistory(user.id)).items.map((i) => i.action);
+    const id = await book.addEntry(ben.id, line("2026-10-01", "out", "tea", 2));
+    await book.updateEntry(ben.id, id, line("2026-10-01", "out", "tea", 2)); // no change, no line
+    await book.updateEntry(ben.id, id, line("2026-10-02", "out", "green tea", 2.5));
+    await book.deleteEntry(ben.id, id);
+    assert.deepEqual((await actions(ben)).slice(0, 3), ["entry.delete", "entry.change", "entry.add"]);
+    const [deleted, changed] = (await history.listHistory(ben.id)).items;
+    assert.deepEqual(deleted.detail, { before: { date: "2026-10-02", kind: "out", label: "green tea", amountMinor: 250 } });
+    assert.deepEqual(changed.detail.before, { date: "2026-10-01", kind: "out", label: "tea", amountMinor: 200 });
+    assert.equal(deleted.entryId, id);
+    assert.ok(!(await history.listHistory(ann.id, { limit: 1000 })).items.some((i) => i.entryId === id));
+  });
+
+  test("a change that fails writes no history", async () => {
+    const before = (await history.listHistory(ann.id, { limit: 1000 })).items.length;
+    await assert.rejects(book.deleteEntry(ben.id, 999999), is404);
+    await assert.rejects(book.addEntry(ann.id, line("2026-09-01", "out", "x".repeat(41), 5))); // too long for the column
+    assert.equal((await history.listHistory(ann.id, { limit: 1000 })).items.length, before);
+  });
+
+  test("history comes in pages, and clearing it leaves one line", async () => {
+    const first = await history.listHistory(ann.id, { limit: 2 });
+    assert.equal(first.items.length, 2);
+    assert.equal(first.more, true);
+    const next = await history.listHistory(ann.id, { before: first.items[1].id, limit: 2 });
+    assert.ok(next.items[0].id < first.items[1].id);
+    await history.clearHistory(ann.id);
+    assert.deepEqual((await history.listHistory(ann.id)).items.map((i) => i.action), ["history.clear"]);
+    assert.ok((await history.listHistory(ben.id)).items.length > 1);
+  });
+
+  test("the attempt store counts per key, inside the window", async () => {
+    await attempts.attemptStore.add("login:a@b.c", 1000);
+    await attempts.attemptStore.add("login:a@b.c", 2000);
+    await attempts.attemptStore.add("login:other", 2000);
+    assert.equal(await attempts.attemptStore.count("login:a@b.c", 1000), 1);
+    assert.equal(await attempts.attemptStore.count("login:a@b.c", 0), 2);
+    const [row] = await db.query("SELECT key_hash AS k FROM attempts LIMIT 1");
+    assert.equal(row.k.length, 64); // the email itself is not stored
+    await attempts.deleteOldAttempts(Date.now());
+    assert.equal(await attempts.attemptStore.count("login:a@b.c", 0), 0);
+  });
+
+  test("a new password logs out every other session", async () => {
+    const here = await sessions.createSession(ann.id);
+    const elsewhere = await sessions.createSession(ann.id);
+    const bens = await sessions.createSession(ben.id);
+    await users.setPassword(ann.id, "new-hash", here.token);
+    assert.equal(await users.findPasswordHash(ann.id), "new-hash");
+    assert.ok(await sessions.findSessionUser(here.token));
+    assert.equal(await sessions.findSessionUser(elsewhere.token), null);
+    assert.ok(await sessions.findSessionUser(bens.token));
+    assert.equal((await history.listHistory(ann.id)).items[0].action, "password.change");
+    await db.query("DELETE FROM sessions");
+  });
+
   test("a session finds its user until it is destroyed or expires", async () => {
     const { token } = await sessions.createSession(ann.id);
     assert.deepEqual(await sessions.findSessionUser(token), { id: ann.id, name: "Ann", email: "ann@example.com" });
@@ -171,5 +230,6 @@ describe("database", { skip: !enabled && "set MYSQL_TEST_DATABASE to run" }, () 
     await db.query("DELETE FROM users WHERE id = ?", [ann.id]);
     assert.equal((await db.query("SELECT COUNT(*) AS n FROM entries"))[0].n, 0);
     assert.equal((await db.query("SELECT COUNT(*) AS n FROM settings"))[0].n, 0);
+    assert.equal((await db.query("SELECT COUNT(*) AS n FROM history WHERE user_id = ?", [ann.id]))[0].n, 0);
   });
 });

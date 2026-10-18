@@ -46,3 +46,29 @@ CREATE TABLE IF NOT EXISTS entries (
 -- On TiDB, hand out ids in order so entries on one day keep the order they
 -- were written in. MySQL reads this as a comment and ignores it.
 /*T![auto_id_cache] AUTO_ID_CACHE = 1 */;
+
+-- What happened in each book, oldest first: every change to an entry or the
+-- settings, restores, erases and log-ins. `detail` keeps a copy of the entry
+-- as it was, so a line still reads right after the entry itself is gone.
+-- `at` is milliseconds since 1970, like sessions.expires_at.
+CREATE TABLE IF NOT EXISTS history (
+  id       BIGINT      NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id  INT         NOT NULL,
+  at       BIGINT      NOT NULL,
+  action   VARCHAR(20) NOT NULL,
+  entry_id BIGINT      NULL,
+  detail   JSON        NULL,
+  KEY idx_history_user (user_id, id),
+  CONSTRAINT fk_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+)
+/*T![auto_id_cache] AUTO_ID_CACHE = 1 */;
+
+-- Recent log-in and sign-up attempts, counted by lib/limiter.js. Kept here
+-- rather than in memory so every server process and every restart sees the
+-- same count. key_hash is a SHA-256 of the key, so no email address is stored.
+CREATE TABLE IF NOT EXISTS attempts (
+  id       BIGINT   NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  key_hash CHAR(64) NOT NULL,
+  at       BIGINT   NOT NULL,
+  KEY idx_attempt_key (key_hash, at)
+);

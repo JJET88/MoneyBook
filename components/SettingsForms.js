@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { eraseEverything, restoreBackup, saveSettings } from "@/app/actions";
+import { changePassword, clearMyHistory, eraseEverything, restoreBackup, saveSettings } from "@/app/actions";
 import { MAX_BACKUP_CHARS, readBackup } from "@/lib/backup";
 import { AppError } from "@/lib/errors";
 import { minorToInput } from "@/lib/money";
@@ -142,6 +142,75 @@ export function StartAgain() {
       {error && <p className="error" role="alert">{error}</p>}
       <div className="row">
         <button type="button" className="plain is-danger" disabled={pending} onClick={erase}>{t(armed ? "erase.again" : "erase.button")}</button>
+      </div>
+    </div>
+  );
+}
+
+export function Password() {
+  const toast = useToast();
+  const t = useT();
+  const [form, setForm] = useState({ current: "", password: "" });
+  const [error, setError] = useState(null);
+  const [pending, startTransition] = useTransition();
+  const set = (key) => (event) => setForm({ ...form, [key]: event.target.value });
+
+  function submit(event) {
+    event.preventDefault();
+    startTransition(async () => {
+      const result = await changePassword(form);
+      setError(result.error ?? null);
+      if (result.ok) {
+        setForm({ current: "", password: "" });
+        toast(t("toast.passwordChanged"));
+      }
+    });
+  }
+
+  return (
+    <form className="panel form" onSubmit={submit} noValidate>
+      <h2>{t("password.title")}</h2>
+      <p className="hint">{t("password.hint")}</p>
+      <label className="field">{t("password.current")}
+        <input className="input" type="password" autoComplete="current-password" value={form.current} onChange={set("current")} />
+      </label>
+      <label className="field">{t("password.new")}
+        <input className="input" type="password" autoComplete="new-password" value={form.password} onChange={set("password")} />
+      </label>
+      {error && <p className="error" role="alert">{error}</p>}
+      <button type="submit" className="primary" disabled={pending}>{t("password.save")}</button>
+    </form>
+  );
+}
+
+export function ClearHistory() {
+  const toast = useToast();
+  const t = useT();
+  const [armed, setArmed] = useState(false);
+  const [error, setError] = useState(null);
+  const [pending, startTransition] = useTransition();
+
+  function clear() {
+    if (!armed) {
+      setArmed(true);
+      setTimeout(() => setArmed(false), 5000);
+      return;
+    }
+    setArmed(false);
+    startTransition(async () => {
+      const result = await clearMyHistory();
+      setError(result.error ?? null);
+      if (result.ok) toast(t("toast.historyCleared"));
+    });
+  }
+
+  return (
+    <div className="panel stack">
+      <h2>{t("history.clearTitle")}</h2>
+      <p className="hint">{t("history.clearHint")}</p>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="row">
+        <button type="button" className="plain is-danger" disabled={pending} onClick={clear}>{t(armed ? "history.clearAgain" : "history.clearTitle")}</button>
       </div>
     </div>
   );

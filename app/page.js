@@ -56,7 +56,7 @@ export default async function DaysPage({ searchParams }) {
 
       <section className="page" aria-labelledby="page-title">
         <h3 id="page-title">{t("days.pageTitle", { month: month({ month: "long" }) })}</h3>
-        <DayList days={groupByDay(entries, t.locale)} currency={settings.currency}
+        <DayList days={groupByDay(entries, t.locale)} currency={settings.currency} today={today}
           emptyText={t("days.empty", { month: month() })} />
         <div className="total-line"><span>{t("days.totalSpent")}</span><span className="num">{money(totals.out)}</span></div>
       </section>

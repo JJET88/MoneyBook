@@ -1,4 +1,4 @@
-import { Backup, StartAgain, StartingBalance } from "@/components/SettingsForms";
+import { Backup, Password, StartAgain, StartingBalance } from "@/components/SettingsForms";
 import { requireUser } from "@/lib/auth/current-user";
 import { getT } from "@/lib/i18n/server";
 import { getSettings, monthTotals } from "@/lib/repos/book";
@@ -16,6 +16,7 @@ export default async function SettingsPage() {
       {/* key: after a restore or an erase the saved settings differ, so the form starts over from them */}
       <StartingBalance key={JSON.stringify(settings)} settings={settings} />
       <Backup monthsInBook={months.length} />
+      <Password />
       <StartAgain />
       <p className="hint account">{t("settings.loggedInAs", { name: user.name, email: user.email })}</p>
     </>
